@@ -1,21 +1,15 @@
 import os
 import json
 import io
-import fitz  # PyMuPDF
+from pypdf import PdfReader, PdfWriter
 from flask import Flask, request, send_file
 import traceback
 
 app = Flask(__name__)
 
-FONT_SIZE = 8.5          
-Y_ADJUST = 2.2           
-X_ADJUST = 0.5           
-EMAIL_FONT_SIZE = 7.5    
-PHONE_Y_ADJUST = 2.2     
-
 @app.route('/', methods=['GET'])
 def home():
-    return "✅ Render Python API with PyMuPDF is Live!", 200
+    return "✅ Render Python API with pypdf is Live!", 200
 
 @app.route('/edit', methods=['POST'])
 def edit_pdf():
@@ -27,52 +21,36 @@ def edit_pdf():
         rep_data = json.loads(request.form['replacements'])
         
         pdf_bytes = pdf_file.read()
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        
-        replacements_sorted = sorted(rep_data, key=lambda x: len(x.get("old", "")), reverse=True)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        writer = PdfWriter()
 
-        for page in doc:
-            replacements_todo = []
-            used_rects = []
-            
-            for rep in replacements_sorted:
-                old_text = rep.get("old", "").strip()
-                new_text = rep.get("new", "").strip()
-                if not old_text: continue
-                
-                text_instances = page.search_for(old_text)
-                for inst in text_instances:
-                    is_overlap = False
-                    for u_rect in used_rects:
-                        if inst.intersects(u_rect):
-                            is_overlap = True
-                            break
-                    if is_overlap: continue
-                        
-                    used_rects.append(inst)
-                    page.add_redact_annot(inst, fill=(1, 1, 1))
-                    replacements_todo.append((inst, new_text))
-            
-            if replacements_todo:
-                page.apply_redactions()
-                
-                for rect, text in replacements_todo:
-                    current_font_size = FONT_SIZE
-                    current_y_adjust = Y_ADJUST
-                    
-                    if "@" in text:
-                        current_font_size = EMAIL_FONT_SIZE
-                    elif text.replace(" ", "").replace("+", "").isdigit() and len(text) >= 10:
-                        current_y_adjust = PHONE_Y_ADJUST
+        for page in reader.pages:
+            writer.add_page(page)
 
-                    start_point = fitz.Point(rect.x0 + X_ADJUST, rect.y1 - current_y_adjust) 
-                    page.insert_text(start_point, text, fontname="helv", fontsize=current_font_size, color=(0, 0, 0))
-                        
-        out_pdf = doc.write(garbage=4, deflate=True, clean=True)
-        doc.close()
+        # পিপিডিএফ (pypdf) এর মাধ্যমে টেক্সট মডিফিকেশন এবং অবজেক্ট আপডেট
+        for page in writer.pages:
+            if "/Contents" in page:
+                content = page["/Contents"]
+                if isinstance(content, list):
+                    content_obj = content[0].get_object()
+                else:
+                    content_obj = content.get_object()
+                
+                if "/Bytestream" in content_obj or isinstance(content_obj.get_data(), bytes):
+                    data = content_obj.get_data()
+                    for rep in rep_data:
+                        old_text = rep.get("old", "").strip()
+                        new_text = rep.get("new", "").strip()
+                        if not old_text: continue
+                        data = data.replace(old_text.encode('utf-8'), new_text.encode('utf-8'))
+                    content_obj.set_data(data)
+
+        output_stream = io.BytesIO()
+        writer.write(output_stream)
+        output_stream.seek(0)
         
         return send_file(
-            io.BytesIO(out_pdf),
+            output_stream,
             mimetype='application/pdf',
             as_attachment=True,
             download_name='edited.pdf'

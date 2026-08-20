@@ -28,28 +28,28 @@ def edit_pdf():
         for page in reader.pages:
             writer.add_page(page)
 
+        # পিপিডিএফ (pypdf) এর মাধ্যমে টেক্সট মডিফিকেশন এবং অবজেক্ট আপডেট
         for page in writer.pages:
             if "/Contents" in page:
                 content = page["/Contents"]
-                content_obj = content[0].get_object() if isinstance(content, list) else content.get_object()
+                if isinstance(content, list):
+                    content_obj = content[0].get_object()
+                else:
+                    content_obj = content.get_object()
                 
-                if hasattr(content_obj, "get_data"):
+                if "/Bytestream" in content_obj or isinstance(content_obj.get_data(), bytes):
                     data = content_obj.get_data()
-                    
                     for rep in rep_data:
                         old_text = rep.get("old", "").strip()
                         new_text = rep.get("new", "").strip()
                         if not old_text: continue
-
-                        # ইমেলের ক্ষেত্রে স্মার্ট রিজেক্স রিপ্লেস
-                        if "@" in old_text and "@" in new_text:
-                            # পিডিএফের ইমেল প্যাটার্ন খুঁজে বের করে সেটিকে নতুন টেক্সট দিয়ে রিপ্লেস
-                            # এই লজিকটি @ এর আগে ও পরের পুরো অংশকে টার্গেট করবে
-                            pattern = re.escape(old_text).encode('utf-8')
-                            data = re.sub(pattern, new_text.encode('utf-8'), data)
-                        else:
-                            # সাধারণ টেক্সট রিপ্লেস
-                            data = data.replace(old_text.encode('utf-8', errors='ignore'), new_text.encode('utf-8', errors='ignore'))
+                        
+                        # 🔥 Magic Fix: Double Replacement ঠেকানোর লজিক
+                        # যদি শুধু ডোমেইন (যেমন: @gmail.com) কে ফাঁকা করার নির্দেশ থাকে, তবে সেটি স্কিপ করবে
+                        if old_text.startswith('@') and new_text == "":
+                            continue
+                            
+                        data = data.replace(old_text.encode('utf-8'), new_text.encode('utf-8'))
                     
                     content_obj.set_data(data)
 

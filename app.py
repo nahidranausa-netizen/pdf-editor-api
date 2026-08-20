@@ -4,6 +4,7 @@ import io
 from pypdf import PdfReader, PdfWriter
 from flask import Flask, request, send_file
 import traceback
+import re
 
 app = Flask(__name__)
 
@@ -27,7 +28,7 @@ def edit_pdf():
         for page in reader.pages:
             writer.add_page(page)
 
-        # পিপিডিএফ (pypdf) এর মাধ্যমে টেক্সট মডিফিকেশন এবং অবজেক্ট আপডেট
+        # টেক্সট প্রতিস্থাপনের লজিক (ইমেল ম্যাচিং সহ)
         for page in writer.pages:
             if "/Contents" in page:
                 content = page["/Contents"]
@@ -38,11 +39,32 @@ def edit_pdf():
                 
                 if "/Bytestream" in content_obj or isinstance(content_obj.get_data(), bytes):
                     data = content_obj.get_data()
+                    
+                    # নতুন ইমেল কোনটি পাঠানো হয়েছে তা খুঁজে বের করা
+                    new_email = ""
+                    for rep in rep_data:
+                        val = rep.get("new", "").strip()
+                        if "@" in val:
+                            new_email = val
+                            break
+
                     for rep in rep_data:
                         old_text = rep.get("old", "").strip()
                         new_text = rep.get("new", "").strip()
                         if not old_text: continue
-                        data = data.replace(old_text.encode('utf-8'), new_text.encode('utf-8'))
+                        
+                        # সাধারণ টেক্সট রিপ্লেস
+                        data = data.replace(old_text.encode('utf-8', errors='ignore'), new_text.encode('utf-8', errors='ignore'))
+                    
+                    # যদি পিডিএফে ইয়াহু বা অন্য কোনো ইমেল থেকে থাকে যা সরাসরি ম্যাচ করেনি, 
+                    # তবে বাইট স্ট্রিমের ভেতর থেকে যেকোনো ইমেল প্যাটার্ন ধরে নতুন ইমেল দিয়ে বদলানোর জন্য রিজেক্স (Regex) ব্যবহার
+                    if new_email:
+                        try:
+                            # পিডিএফে থাকা যেকোনো ইমেল প্যাটার্ন খুঁজে বের করে নতুন ইমেল বসানো
+                            data = re.sub(rb'[\w\.-]+@[\w\.-]+\.\w+', new_email.encode('utf-8'), data)
+                        except Exception:
+                            pass
+
                     content_obj.set_data(data)
 
         output_stream = io.BytesIO()

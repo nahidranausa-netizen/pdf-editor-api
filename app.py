@@ -27,7 +27,7 @@ def edit_pdf():
         for page in reader.pages:
             writer.add_page(page)
 
-        # টেক্সট প্রতিস্থাপনের জন্য লজিক (বাইট লেভেলে প্যাডিং সহ বড় ইমেল হ্যান্ডেল করার জন্য)
+        # পিপিডিএফ (pypdf) এর মাধ্যমে টেক্সট মডিফিকেশন এবং অবজেক্ট আপডেট
         for page in writer.pages:
             if "/Contents" in page:
                 content = page["/Contents"]
@@ -42,15 +42,7 @@ def edit_pdf():
                         old_text = rep.get("old", "").strip()
                         new_text = rep.get("new", "").strip()
                         if not old_text: continue
-                        
-                        # ইমেল বা বড় টেক্সটের ক্ষেত্রে বাইট লেন্থ ঠিক রাখার জন্য স্পেস প্যাডিং
-                        if "@" in old_text and "@" in new_text:
-                            if len(new_text) < len(old_text):
-                                new_text = new_text + " " * (len(old_text) - len(new_text))
-                            elif len(new_text) > len(old_text):
-                                old_text = old_text + " " * (len(new_text) - len(old_text))
-                                
-                        data = data.replace(old_text.encode('utf-8', errors='ignore'), new_text.encode('utf-8', errors='ignore'))
+                        data = data.replace(old_text.encode('utf-8'), new_text.encode('utf-8'))
                     content_obj.set_data(data)
 
         output_stream = io.BytesIO()
